@@ -1,0 +1,23 @@
+import arcpy, os
+arcpy.env.overwriteOutput=1
+
+#Change to match your data
+arcpy.env.workspace='//hqwildstat/D$/Fine scale vegetation analysis/Erin Rcode/veg_model/spatial/output/Result.gdb'
+inFeatures='Unit_56_73A_Merged'
+csvfolder=r'//hqwildstat/D$/Fine scale vegetation analysis/Erin Rcode/veg_model/results/species/presence/text'
+filename='56_73A_Pseudoroegneria_spicata_NA.csv'
+
+#Find all csv files in csvfolder and add to csvlist
+#csvlist=[]
+#for file in os.listdir(csvfolder):
+#    if file.endswith(".csv"):
+#        csvlist.append(os.path.join(csvfolder, file))
+
+cvslist=csvlist.append(os.path.join(csvfolder, filename))
+
+#For each csv in csvlist join and export
+#for csv in csvlist:
+#    arcpy.MakeFeatureLayer_management(in_features=inFeatures, out_layer='fclyr')
+#    arcpy.MakeTableView_management(in_table=csv, out_view='csvview')
+#    arcpy.AddJoin_management(in_layer_or_view='fclyr', in_field='CI_INT', join_table='csvview', join_field='CI')
+#    arcpy.CopyFeatures_management(in_features='fclyr',out_feature_class=os.path.splitext(os.path.basename(csv))[0])

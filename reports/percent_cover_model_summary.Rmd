@@ -1,0 +1,160 @@
+---
+title: "Trained Forage Percent Cover Model Summary"
+author: "Idaho Department of Fish and Game"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+require(tidyverse)
+require(stringr)
+require(here)
+require(caret)
+require(pROC)
+require(rpart)
+require(ranger)
+require(caTools)
+require(skimr)
+require(plotly)
+require(knitr)
+
+# load model ####
+load(here(file.path("results","percent_cover_summary_trained_models.RData"))) # species listed as forage species (deer, elk, and sage grouse)
+
+```
+
+## Genera models
+
+Of the `r nrow(MODEL_summary_genus)` identified genera of importance for deer and elk forage or sage-grouse, we had sufficient data (e.g. at least 3 ecognition polygons) to train models for `r length(unique(MODEL_summary_genus$Name[which(MODEL_summary_genus$EnoughData == "Yes")]))` of the genera
+
+In the vast majority of cases, Random Forest models appeared to train the best predictive models based on RMSE values.
+
+```{r tbl1, warning=FALSE, message=FALSE, echo=FALSE}
+tbl <- MODEL_summary_genus %>%
+  dplyr::group_by(BestModel_RMSE) %>%
+  dplyr::summarise(`Number of Genera`=n()) %>%
+  na.omit() %>%
+  dplyr::arrange(dplyr::desc(`Number of Genera`))
+
+kable(tbl)
+```
+
+We were able to attain R-squared values of >= 0.2 for `r round(sum(MODEL_summary_genus$Best_RMSE_TestRsquared >= 0.2, na.rm=T)/length(unique(MODEL_summary_genus$Name[which(MODEL_summary_genus$EnoughData == "Yes")]))*100,digits=0)`% of the trained genera models.
+
+```{r plot1, warning=FALSE, message=FALSE, echo=FALSE}
+ggplot(MODEL_summary_genus, aes(Best_RMSE_TestRsquared)) +
+  geom_histogram()
+```
+
+R-squared values plotted according to sample size
+
+```{r plot2, warning=FALSE, message=FALSE, echo=FALSE}
+X <- na.omit(MODEL_summary_genus)
+plot <- ggplot(X, aes(x = SampleSize, y = Best_RMSE_TestRsquared, text = Name)) +
+  geom_point() 
+ggplotly(plot)
+```
+
+Data summary of trained models.
+
+```{r tbl2, warning=FALSE, message=FALSE, echo=FALSE}
+DT::datatable(MODEL_summary_genus, options=list(pageLength=10,
+                                columnDefs = list(list(width = '40%')),
+                                scrollX=TRUE,
+                                scrollCollapse=TRUE,
+                                autoWidth=TRUE),
+              filter='top',rownames=FALSE)
+
+```
+
+## Species models
+
+Of the `r nrow(MODEL_summary_species)` identified species of importance for deer and elk forage or sage-grouse, we had sufficient data (e.g. at least 3 ecognition polygons) to train models for `r length(unique(MODEL_summary_species$Name[which(MODEL_summary_species$EnoughData == "Yes")]))` of the species.
+
+In the vast majority of cases, Random Forest models appeared to train the best predictive models based on RMSE values.
+
+```{r tbl3, warning=FALSE, message=FALSE, echo=FALSE}
+tbl <- MODEL_summary_species %>%
+  dplyr::group_by(BestModel_RMSE) %>%
+  dplyr::summarise(`Number of Species`=n()) %>%
+  na.omit() %>%
+  dplyr::arrange(dplyr::desc(`Number of Species`))
+
+kable(tbl)
+```
+
+We were able to attain R-squared values of >= 0.2 for `r round(sum(MODEL_summary_species$Best_RMSE_TestRsquared >= 0.2, na.rm=T)/length(unique(MODEL_summary_species$Name[which(MODEL_summary_species$EnoughData == "Yes")]))*100,digits=0)`% of the trained species models.
+
+```{r plot3, warning=FALSE, message=FALSE, echo=FALSE}
+ggplot(MODEL_summary_species, aes(Best_RMSE_TestRsquared)) +
+  geom_histogram()
+```
+
+R-squared values plotted according to sample size
+
+```{r plot4, warning=FALSE, message=FALSE, echo=FALSE}
+X <- na.omit(MODEL_summary_species)
+plot <- ggplot(X, aes(x = SampleSize, y = Best_RMSE_TestRsquared, text = Name)) +
+  geom_point() 
+ggplotly(plot)
+```
+
+Data summary of trained models.
+
+```{r tbl4, warning=FALSE, message=FALSE, echo=FALSE}
+DT::datatable(MODEL_summary_species, options=list(pageLength=10,
+                                columnDefs = list(list(width = '40%')),
+                                scrollX=TRUE,
+                                scrollCollapse=TRUE,
+                                autoWidth=TRUE),
+              filter='top',rownames=FALSE)
+
+```
+
+
+## Subspecies models
+
+Of the `r nrow(MODEL_summary_subspecies)` identified subspecies of importance for deer and elk forage or sage-grouse, we had sufficient data (e.g. at least 3 ecognition polygons) to train models for `r length(unique(MODEL_summary_subspecies$Name[which(MODEL_summary_subspecies$EnoughData == "Yes")]))` of the subspecies.
+
+```{r tbl5, warning=FALSE, message=FALSE, echo=FALSE}
+tbl <- MODEL_summary_subspecies %>%
+  dplyr::group_by(BestModel_RMSE) %>%
+  dplyr::summarise(`Number of Subspecies`=n()) %>%
+  na.omit() %>%
+  dplyr::arrange(dplyr::desc(`Number of Subspecies`))
+
+kable(tbl)
+```
+
+We were able to attain R-squared values of >= 0.2 for `r round(sum(MODEL_summary_subspecies$Best_RMSE_TestRsquared >= 0.2, na.rm=T)/length(unique(MODEL_summary_subspecies$Name[which(MODEL_summary_subspecies$EnoughData == "Yes")]))*100,digits=0)`% of the trained subspecies models.
+
+```{r plot5, warning=FALSE, message=FALSE, echo=FALSE}
+ggplot(MODEL_summary_subspecies, aes(Best_RMSE_TestRsquared)) +
+  geom_histogram()
+```
+
+R-squared values plotted according to sample size
+
+```{r plot6, warning=FALSE, message=FALSE, echo=FALSE}
+X <- na.omit(MODEL_summary_subspecies)
+plot <- ggplot(X, aes(x = SampleSize, y = Best_RMSE_TestRsquared, text = Name)) +
+  geom_point() 
+ggplotly(plot)
+```
+
+Data summary of trained models.
+
+```{r tbl6, warning=FALSE, message=FALSE, echo=FALSE}
+DT::datatable(MODEL_summary_subspecies, options=list(pageLength=10,
+                                columnDefs = list(list(width = '40%')),
+                                scrollX=TRUE,
+                                scrollCollapse=TRUE,
+                                autoWidth=TRUE),
+              filter='top',rownames=FALSE)
+
+```

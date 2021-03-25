@@ -1,0 +1,8 @@
+import arcpy
+
+#Change to match your data
+arcpy.env.workspace='//hqwildstat/D$/Fine scale vegetation analysis/Erin Rcode/veg_model/spatial/output/Result.gdb'
+delete_feature='Pseudoroegneria_spicata_NA'
+
+fc=arcpy.ListFeatureClasses()
+print(fc)

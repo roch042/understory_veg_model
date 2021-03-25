@@ -1,0 +1,90 @@
+pred_prep_covariates <- function(filepath=filepath,
+                                 cov_files=cov_files,
+                                 filetype="dbf")
+{
+  # data <- foreign::read.dbf(file.path(filepath,cov_files),as.is=TRUE)
+  load(file.path(filepath,cov_files))
+  
+  if(filetype == "dbf"){ 
+    pred_data <- dbf_all
+  }
+  
+  if(filetype == "csv"){ 
+    pred_data <- csv_all
+  }
+  
+  names(pred_data) <- tolower(names(pred_data)) 
+  
+  if(filetype == "dbf"){
+  sel <- c("quadpoly_i","quad","id","ele","slp","casp","sasp","twi","lcv","sri","tpi","minpr","maxpr","tapr","mintp","maxtp","aws","clay","sand","silt","cec","d2r","ph","om","caco3","tsf","ff","tc","sc","nass","dev","water_m2","shadow_m2","bareground","mgrass_m2","xgrass_m2","mshrub_m2","xshrub_m2","conifer_m2","decid_m2","agricultur","developed_","shape_area")
+  }
+  
+  if(filetype == "csv"){
+    sel <- c("quadpoly_id","quad","id","ele","slp","casp","sasp","twi","lcv","sri","tpi","minpr","maxpr","tapr","mintp","maxtp","aws","clay","sand","silt","cec","d2r","ph","om","caco3","tsf","ff","tc","sc","nass","dev","water_m2","shadow_m2","bareground_m2","mgrass_m2","xgrass_m2","mshrub_m2","xshrub_m2","conifer_m2","decid_m2","agriculture_m2","developed_m2","shape_area")
+  }
+  
+  # Load Covariate Data ####
+  if(filetype == "dbf"){
+    pred_data <- pred_data %>%
+      dplyr::select(dplyr::one_of(sel)) %>%
+      dplyr::rename(bareground_m2 = bareground,
+                    agriculture_m2 = agricultur,
+                    developed_m2 = developed_,
+                    quadpoly_id = quadpoly_i)
+  }
+  
+  if(filetype == "csv"){
+    pred_data <- pred_data %>%
+      dplyr::select(dplyr::one_of(sel))
+  }
+  
+    # dplyr::select( -lcv, -tpi, -nass, -dev, -mintp, -maxpr, -sasp, -tapr) %>%
+  pred_data <- pred_data %>%
+    dplyr::mutate( ytsf = as.integer(format(Sys.Date(), "%Y")) - tsf, # years since most recent fire
+                   ele2 = ele^2,
+                   slp2 = slp^2,
+                   casp2 = casp^2,
+                   twi2 = twi^2,
+                   sri2 = sri^2,
+                   minpr2 = minpr^2,
+                   maxtp2 = maxtp^2,
+                   aws2 = aws^2,
+                   clay2 = clay^2,
+                   sand2 = sand^2,
+                   silt2 = silt^2,
+                   cec2 = cec^2,
+                   d2r2 = d2r^2,
+                   ph2 = ph^2,
+                   om2 = om^2,
+                   caco32 = caco3^2,
+                   ytsf2 = ytsf^2) %>%
+    dplyr::mutate(nass = as.factor(nass),
+                  tpi = as.factor(tpi),
+                  dev = as.factor(dev),
+                  tsf = as.factor(tsf),
+                  ff = as.factor(ff),
+                  sc = as.factor(sc)) %>%
+    dplyr::mutate(Real_Shape_Area = water_m2 + shadow_m2 + bareground_m2 + mgrass_m2 + xgrass_m2 + mshrub_m2 + xshrub_m2 + conifer_m2 + decid_m2 + agriculture_m2 + developed_m2) %>%
+    dplyr::rename(Shape_Area = shape_area) %>%
+    dplyr::mutate(water_m2 = water_m2/Real_Shape_Area,
+                  shadow_m2 = shadow_m2/Real_Shape_Area,
+                  bareground_m2 = bareground_m2/Real_Shape_Area,
+                  mgrass_m2 = mgrass_m2/Real_Shape_Area,
+                  xgrass_m2 = xgrass_m2/Real_Shape_Area,
+                  mshrub_m2 = mshrub_m2/Real_Shape_Area,
+                  xshrub_m2 = xshrub_m2/Real_Shape_Area,
+                  conifer_m2 = conifer_m2/Real_Shape_Area,
+                  decid_m2 = decid_m2/Real_Shape_Area,
+                  agriculture_m2 = agriculture_m2/Real_Shape_Area,
+                  developed_m2 = developed_m2/Real_Shape_Area)
+  
+  pred_data_ids <- pred_data$quadpoly_id
+  
+  pred_data <- pred_data %>%
+    # dplyr::select(-c(objectid,quadpoly_id,id,quad)) %>%
+    dplyr::select(-c(quadpoly_id,id,quad)) %>%
+    dplyr::select(-nass,-tpi,-dev,-tsf,-ff,-sc)
+  
+  return(list(pred_data=pred_data,pred_data_ids=pred_data_ids))
+  
+}

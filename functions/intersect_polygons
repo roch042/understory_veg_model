@@ -1,0 +1,33 @@
+
+#Name: VegRoadIntersect.py
+# Purpose: Determine the type of vegetation within 100 meters of all stream crossings
+
+# Import system modules
+import arcpy
+ 
+# Set the workspace (to avoid having to type in the full path to the data every time)
+arcpy.env.workspace = "//hqwildstat/$D/Fine scale vegetation analysis/Erin Rcode/veg_model/spatial/prediction_maps/prediction_maps.gdb"    
+
+# Process: Find all stream crossings (points)
+inFeature1 = "HighwaysandRoadsITD_CopyFeat"
+inFeature2 = "Unit_43_48"
+intersectOutput = inFeature2+"_roads"
+clusterTolerance = 1.5    
+arcpy.Intersect_analysis(inFeatures,layerPath, intersectOutput, "", clusterTolerance, "input")
+ 
+# Process: Buffer all stream crossings by 100 meters
+bufferOutput = intersectOutput+"_1000m"
+bufferDist = "1000 meters"
+arcpy.Buffer_analysis(intersectOutput, bufferOutput, bufferDist)
+
+# Process: Clip the vegetation feature class to stream_crossing_100m
+#clipInput = "vegetation"
+#clipOutput = "veg_within_100m_of_crossings"
+#arcpy.Clip_analysis(clipInput, bufferOutput, clipOutput)
+
+# Process: Summarize how much (area) of each type of vegetation is found
+# within 100 meter of the stream crossings
+#statsOutput = "veg_within_100m_of_crossings_stats"
+#statsFields = [["shape_area", "sum"]]
+#caseField = "veg_type"
+#arcpy.Statistics_analysis(clipOutput, statsOutput, statsFields, caseField)
