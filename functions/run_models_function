@@ -1,0 +1,51 @@
+# function to format data and then train model ####
+run.model<-function(fielddata){
+  x<-list("Forage_Models_Genus"=Forage_Models_Genus,"Forage_Models_Species"=Forage_Models_Species,"Forage_Models_SubSpecies"=Forage_Models_SubSpecies)
+  Model<-reshape2::melt(x[menu(c("Forage_Models_Genus","Forage_Models_Species","Forage_Models_SubSpecies"), title="Select Model:")])
+  Model<-Model[-length(Model)]
+  folder<-if(Model$ModelCode[[1]]=="ModelCode1"){
+    paste0("Genus")}else if(Model$ModelCode[[1]]=="ModelCode2"){
+      paste0("Species")}else{
+        paste0("SubSpecies")}
+  type<-menu(c("presence","percen_cover"), title="Select Type:")
+
+for (i in 1:nrow(Model)){
+  # for(i in selections){
+  file_title <- paste(Model$Genus[i],"_",Model$Species[i],"_",Model$SubSpecies[i],".RData",sep="")
+  # if (file_title %in% list.files(here(file.path("models",folder,type)))){
+  #   next
+  # } else {
+  tryCatch({
+    print(paste("iteration number ",i," of ",nrow(Model),":",sep=""))
+    
+    # format data ####
+    print("formatting data")
+    DAT <- veg_data(genus = Model$Genus[i],
+                    species = Model$Species[i],
+                    subspecies = Model$SubSpecies[i],
+                    fielddata = fielddata)
+    
+    # train models ####
+    print("training models")
+    if(type == "presence") {
+      RES <- veg_train_models(DAT=DAT)
+    } else {
+      if(type == "percent_cover"){
+        RES <- propveg_train_models(DAT=DAT)
+      }
+    }
+    
+    # save training models ####
+    print("exporting models")
+    if(is.na(Model$Species[i]) & is.na(Model$SubSpecies[i])){
+      save(list=c("RES","DAT"),file=here(file.path("models","genus",type,file_title)))
+    } else {
+      if(!is.na(Model$Species[i]) & is.na(Model$SubSpecies[i])){
+        save(list=c("RES","DAT"),file=here(file.path("models","species",type,file_title))) 
+      } else {
+        save(list=c("RES","DAT"),file=here(file.path("models","subspecies",type,file_title))) 
+      }
+    }
+  }, error=function(e){})
+  # }
+}}
