@@ -7,7 +7,7 @@ run.model<-function(fielddata){
     paste0("Genus")}else if(Model$ModelCode[[1]]=="ModelCode2"){
       paste0("Species")}else{
         paste0("SubSpecies")}
-  type<-menu(c("presence","percen_cover"), title="Select Type:")
+  type<-menu(c("presence","percent_cover"), title="Select Type:")
 
 for (i in 1:nrow(Model)){
   # for(i in selections){
