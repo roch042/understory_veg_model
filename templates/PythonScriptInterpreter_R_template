@@ -1,0 +1,32 @@
+#########################################################
+### Template for Running Python Scripts in R (draft) ###
+## Author: Robert Ritson, Research Associate (WMI) ##
+## Date: 4/16/2021 ##
+#########################################################
+##Set File Paths and Names
+py.path = "C:/Python27/ArcGIS10.6/python.exe" #path to Python version used by ArcGIS
+py.function = "C:/Users/rritson/Documents/GitHub/Test/extract_quadpolyID_function_updated.py" #file path to python script
+fielddata.path = "C:/Users/rritson/Documents/GitHub/Experimenting/HerbariumData_Shapefile/cpnwh.shp" #file path to field pts shapefile
+quad.path = "A://Fine scale vegetation analysis/dbases_4modeling/blank_polys100k.gdb" #file path to empty quadpolygons geodatabase
+output.gdb.path = "C:/Users/rritson/Documents/GitHub/Test" #file path for creating geodatabase to store output
+output.folder.path = "C:/Users/rritson/Documents/GitHub/Test/output_tables" #file path to folder to contain dbf tables
+output.dbf = "merged_output.dbf" #name of merged dbf file
+output.RData = "Final_output.RData" #name of final R object containing output
+newgdb.name = "output.gdb" #name of new geodatabase
+
+##Run Python Code in R
+#install.packages('reticulate')
+require(reticulate) #package for interfacing Python within R
+use_python(py.path, required = T) #Geoprocessing requires ArcGIS installed Python (MUST USE 32-bit v. of R!!!)
+py_available(initialize = T) #initialize python
+source_python(py.function) #stores output of python script in R environment
+extract_quadpolyID(path_to_pts=fielddata.path, 
+                   path_to_quad_gdb= quad.path,
+                   path_to_output_gdb= output.gdb.path,
+                   path_to_output_folder= output.folder.path,
+                   mergeTable_dbf=output.dbf,
+                   gdb_name=newgdb.name)
+
+##Combine and Export Output
+output<-foreign::read.dbf(paste0(output.folder.path,"/",output.dbf),as.is = F)
+save(output,file = paste0(output.folder.path,output.RData))
