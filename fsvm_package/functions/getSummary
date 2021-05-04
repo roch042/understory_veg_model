@@ -1,0 +1,44 @@
+getSummary<-function(folders = c("genus","species","subspecies"),
+                     mod_types = c("presence","percent_cover"),
+                     mod_files = NULL){
+
+  mod_types<-match.arg(mod_types,c("presence","percent_cover"),serveral.ok =T)
+  folders<-match.arg(folders,c("genus","species","subspecies"),serveral.ok =T)
+
+  for(k in 1:length(mod_types)){
+    type<-mod_types[k]
+
+    for(j in 1:length(folders)){
+      folder<-folders[j]
+      mod_files<-ifelse(is.null(mod_files),list.files(here::here(file.path("models",folder,type))),mod_files)
+
+      for(i in 1:length(mod_files)){
+        MODEL_summary<-list()
+        file_title<-if(folder != "subspecies") stringr::str_split_fixed(foo[1],"_NA",2)[1] else stringr::str_split_fixed(foo[1],".RData",2)[1]
+        load(here(file.path("models",folder,type,mod_files[i])))
+        if(length(RES)==1 && type=="presence"){MODEL_summary[[i]]<-data.frame(Name = paste(file_title),EnoughData = "No",BestModel = NA,TestAUC = NA,SampleSize = NA)
+        }else if(length(RES)==1 && type=="percent_cover"){MODEL_summary[[i]]<-data.frame(Name = paste(file_title),EnoughData = "No",BestModel_RMSE = NA,BestModel_Rsquared = NA,Best_RMSE_TestRMSE = NA,Best_RMSE_TestRsquared = NA,Best_Rsquared_TestRMSE = NA,Best_Rsquared_TestRsquared = NA,SampleSize = NA)
+        }else if(length(RES) >1 && type=="presence"){MODEL_summary[[i]]<-data.frame(Name = paste(file_title),EnoughData = "Yes",
+                                                                                    BestModel = ifelse(length(RES$BEST$max_AUC_test) < 0,NA, paste(RES$BEST$max_AUC_test,collapse=",")),
+                                                                                    TestAUC = ifelse(length(RES$BEST$max_AUC_test)>1 | length(RES$BEST$max_AUC_test) <=0,NA,RES$MODELS[[RES$BEST$max_AUC_test]]$auc$auc),
+                                                                                    SampleSize = sum(RES$DATA$total$Present))
+        }else if(length(RES) >1 && type=="percent_cover"){MODEL_summary[[i]]<-data.frame(Name = paste(file_title),EnoughData = "Yes",
+                                                                                         BestModel_RMSE = paste(RES$BEST$min_RMSE_test,collapse=","),
+                                                                                         BestModel_Rsquared = paste(RES$BEST$max_Rsquared_test,collapse=","),
+                                                                                         Best_RMSE_TestRMSE = ifelse(length(RES$BEST$min_RMSE_test)>1 | length(RES$BEST$min_RMSE_test)==0,NA,as.vector(RES$MODELS[[RES$BEST$min_RMSE_test]]$test_results_summary["RMSE"])),
+                                                                                         Best_RMSE_TestRsquared = ifelse(length(RES$BEST$min_RMSE_test)>1 | length(RES$BEST$min_RMSE_test)==0,NA,as.vector(RES$MODELS[[RES$BEST$min_RMSE_test]]$test_results_summary["Rsquared"])),
+                                                                                         Best_Rsquared_TestRMSE = ifelse(length(RES$BEST$max_Rsquared_test)>1 | length(RES$BEST$max_Rsquared_test)==0,NA,as.vector(RES$MODELS[[RES$BEST$max_Rsquared_test]]$test_results_summary["RMSE"])),
+                                                                                         Best_Rsquared_TestRsquared = ifelse(length(RES$BEST$max_Rsquared_test)>1 | length(RES$BEST$max_Rsquared_test)==0,NA,as.vector(RES$MODELS[[RES$BEST$max_Rsquared_test]]$test_results_summary["Rsquared"])),
+                                                                                         SampleSize = sum(RES$DATA$total$Present))
+
+        }
+        gc(); print(paste("iteration",i,"of",length(mod_files),"complete",sep=" "))
+      }
+      x<-dplyr::bind_rows(MODEL_summary)%>%dplyr::right_join(data.frame(Name = file_title)) %>% dplyr::mutate(EnoughData = ifelse(is.na(EnoughData),"No",as.character(EnoughData)))
+      if(folder=="genus"){MODEL_summary_genus<-x
+      }else if(folder=="species"){MODEL_summary_species<-x
+      }else{MODEL_summary_subspecies<-x}
+    }
+    save(list=c("MODEL_summary_genus","MODEL_summary_species","MODEL_summary_subspecies"),file=here("results",file.path(paste(type,"_summary_trained_models.RData",sep=""))))
+  }
+}
