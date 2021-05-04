@@ -1,0 +1,48 @@
+getPredictions<-function(pred_covs = pred_covs, title = "Name of a Spatial Extent",
+                         filepath = here::here(),
+                         mod_types = c("presence","percent_cover"),
+                         folders = c("genus","species","subspecies"),
+                         mod_files = NULL){
+  mod_types<-match.arg(mod_types,c("presence","percent_cover"),serveral.ok =T)
+  folders<-match.arg(folders,c("genus","species","subspecies"),serveral.ok =T)
+  print("Loading covariate data...")
+  load(covs)
+  here::set_here(path = filepath)
+  print(paste("Using File Path --->",here::here()))
+
+  #Set up parallel process
+  cores<-round(parallel::detectCores()*0.75)
+  cl<-parallel::makeCluster(cores)
+  doParallel::registerDoParallel(cl)
+  plibs<-function(){lapply(c('fsvm','readr'), require,character.only=T)}
+  parallel::clusterCall(cl,plibs)
+
+  #Start Parallel Loop
+  foreach::foreach(i=1:length(mod_types)) %:% {
+    mod_type<-mod_types[[i]]
+    print(paste("Predicting Model Type:",mod_type))
+    foreach::foreach(j=1:length(folders)) %:% {
+      folder<-folders[[j]]
+      print(paste("Predicting Models in Folder:",folder))
+      mod_files <- ifelse(is.null(mod_files),list.files(here(file.path("models",folder,mod_type))),mod_files)
+      foreach::foreach(k=1:length(mod_files)) %dopar% {
+        print("check to see if model already run...")
+        if(paste(title,mod_file[k],sep="_") %in% list.files(here(file.path("results",folder,mod_type)))){
+          print("model already predicted from")
+        } else {
+          print(paste("Predicting Model:",mod_files[k]))
+          pred<-fsvm::fsvm_predict(pred_data = pred_data, pred_data_ids = pred_data_ids,
+                                   mod_file = mod_files[k], mod_type = mod_type)
+          gc(); print("save model prediction...")
+          save(pred,file=here(file.path("results",folder,mod_type,paste(title,mod_files[k],sep="_"))))
+          readr::write_csv(pred$pred,path=here(file.path("results",folder,mod_type,"text",paste(title,paste(gsub(".RData","",mod_files[k]),"csv",sep="."),sep="_"))))
+          closeAllConnections()
+          print(paste("completed iteration",k,"of",length(mod_files),"files in Type:",mod_type,"and Folder:",folder,sep=" "))
+          rm(pred); gc()
+        }
+      }
+    }
+  }
+  #Detatch clusters
+  parallel::stopCluster(cl)
+}
