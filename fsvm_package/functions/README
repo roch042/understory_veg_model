@@ -1,0 +1,17 @@
+Title: README - 'fsvm' pacakge (v0.0.0.9000)
+Author: Robert Ritson
+Last edited: 5/4/2021
+
+Many of these functions are still untested, but should work. My intention with this package has been to streamline the workflow required for getting the understory models for FSVM. 
+Wherever I have been able, I have embedded static data files (shapefiles, python scripts, etc.) as system files within the package so they can be easily called from any machine.
+Included is what I have completed so far. I intend to add at least three more functions: 
+* assignLPI for adding sample points along an LPI survey line
+* assignCover for buffering the sampled field plot around the survey location
+* getLpiCov for formatting new LPI or Cover Polt surveys and possibly appending to a current data file
+* Possibly, setExtent for calling either specific regions, gmus, or 100k quads. However, this may just be incorporated within py_extract_quadpolyID.
+
+Note: since I've been mainly concerned with streamlining the modeling process, I have mostly elected to ignore IFWIS species classification and data exporting procedures.
+However, I can easily add these into the package if it is something we still need to be concerned with maintaining. 
+
+
+I welcom any feedback or input.
