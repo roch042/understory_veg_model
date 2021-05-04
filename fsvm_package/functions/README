@@ -8,7 +8,6 @@ Included is what I have completed so far. I intend to add at least three more fu
 * assignLPI for adding sample points along an LPI survey line
 * assignCover for buffering the sampled field plot around the survey location
 * getLpiCov for formatting new LPI or Cover Polt surveys and possibly appending to a current data file
-* Possibly, setExtent for calling either specific regions, gmus, or 100k quads. However, this may just be incorporated within py_extract_quadpolyID.
 
 Note: since I've been mainly concerned with streamlining the modeling process, I have mostly elected to ignore IFWIS species classification and data exporting procedures.
 However, I can easily add these into the package if it is something we still need to be concerned with maintaining. 
