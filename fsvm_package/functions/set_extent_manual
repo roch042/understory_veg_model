@@ -1,0 +1,8 @@
+set_extent_manual<-function(extent = c("Region","GMU","UID_100k","UID_24k"), selections = choices){
+  load(paste(system.file('extents',package = 'fsvm',mustWork = T)),"extent_translations.RData")
+  extent <- match.arg(extent, c("Region","GMU","UID_100k","UID_24k"), several.ok = T)
+  choices <- unique(quad100k_translations[,extent])
+  selections <- match.arg(selections,choices,several.ok = T)
+  sel<-unique(subset(quad100k_translations,quad100k_translations[,extent] %in% selections)[,"QuadPoly"])
+  return(sel)
+}
