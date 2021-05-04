@@ -1,0 +1,77 @@
+as_fsvm <- function(genus = Model$Genus[i],
+                    species = Model$Species[i],
+                    subspecies = Model$SubSpecies[i],
+                    fielddata = fielddata,
+                    DataType = "DataType",
+                    Prcnt_C = "Prcnt_C") {
+
+  fielddata[,"DataType"]<-fielddata[,DataType] #assign data type to correct column
+  fielddata[,"Prcnt_C"]<-fielddata[,Prcnt_C] #assing percent cover to correct column
+
+  # Create Response Variable ####
+  LpiCov <- fielddata %>%
+    dplyr::mutate(
+      ResponseVariable = if(is.na(subspecies) & is.na(species) & !is.na(genus)){
+        (ifelse(G1 == genus, ifelse(DataType == "COVER", Prcnt_C, 1 ), 0))
+      }else{
+        if(is.na(subspecies) & !is.na(species) & !is.na(genus)){
+          (ifelse(!is.na(G2) & G2 == stringr::str_c(genus,species,sep = " "), ifelse(DataType == "COVER", Prcnt_C, 1 ), 0))
+        }else{
+          if(!is.na(subspecies) & !is.na(species) & !is.na(genus)){
+            (ifelse(!is.na(G3) & G3 == stringr::str_c(genus,species,subspecies,sep = " "), ifelse(DataType == "COVER", Prcnt_C, 1 ), 0 ))
+          }else{(NA)}}})
+
+  # split up field data by DataType (LPI vs. COVER) ####
+  ObsData_plots <- LpiCov %>%
+    dplyr::filter(DataType == "COVER") %>%
+    dplyr::mutate(plots = round(as.numeric(ResponseVariable)/100,digits =4)) %>%
+    dplyr::select(-Include, -ModelCode, -G1, -G2, -G3, -ResponseVariable) %>%
+    dplyr::group_by(PlotKey, TranKey, Source, Smpl_Yr, Easting, Northing, DataType, Plot_Ar, QuadPoly_ID, quad, Shape_Length, Shape_Area, ECOCODE) %>%
+    dplyr::distinct() %>% # delete replicate zeros
+    dplyr::summarise(plots = mean(plots, na.rm=T) ) %>% # multipe plot sizes for some PlotKeys (ignoring)
+    dplyr::inner_join(Covariates_QuadPolyID)
+
+  ObsData_pts <- LpiCov %>%
+    dplyr::filter(DataType == "LPI") %>%
+    dplyr::mutate(Hit = as.numeric(ResponseVariable)) %>%
+    dplyr::select(-Include, -ModelCode, -G1, -G2, -G3, -ResponseVariable) %>%
+    dplyr::group_by(PlotKey, TranKey, Source, Smpl_Yr, Easting, Northing, DataType, Plot_Ar, QuadPoly_ID, quad, Shape_Length, Shape_Area, ECOCODE) %>%
+    dplyr::distinct() %>% # delete replicate zeros
+    dplyr::summarise(Hit = sum(Hit)) %>%  # multiple polygons for some PlotKeys (ignoring)
+    dplyr::inner_join(Covariates_QuadPolyID)
+
+  # PLOTS - dataframe for analysis - one row ####
+  PLOTS <- LpiCov %>%
+    dplyr::filter( DataType == "COVER") %>%
+    dplyr::mutate( plots = ifelse(ResponseVariable == 0, NA, round(as.numeric(ResponseVariable )/100, digits =4))) %>%
+    dplyr::select(-Include, -ModelCode, -G1, -G2, -G3, -ResponseVariable) %>%
+    dplyr::rename(Prop = plots) %>%
+    dplyr::group_by(QuadPoly_ID, Shape_Length, Shape_Area, ECOCODE) %>%
+    dplyr::summarise(Total = length(unique(TranKey)),
+                     Prop = ifelse(all(is.na(Prop)), 0, mean(Prop, na.rm=T)),
+                     Present = ifelse(Prop > 0, 1, 0)) %>%
+    dplyr::inner_join(Covariates_QuadPolyID) %>%
+    dplyr::distinct()
+
+  # PTS - dataframe for analysis  - one row per polygon ####
+  PTS <- LpiCov %>%
+    dplyr::filter(DataType == "LPI") %>%
+    dplyr::mutate(Hit = as.numeric(ResponseVariable) ) %>%
+    dplyr::select(-Include, -ModelCode, -G1, -G2, -G3, -ResponseVariable) %>%
+    group_by(QuadPoly_ID, Shape_Length, Shape_Area, ECOCODE) %>%
+    dplyr::summarise(Total = length(unique(PlotKey)),
+                     Hit = sum(Hit),
+                     Present = sum(Hit),
+                     Prop = Present/Total) %>%
+    dplyr::select(-Present) %>%
+    dplyr::mutate(Present = ifelse(Prop > 0, 1, 0)) %>%
+    dplyr::inner_join(Covariates_QuadPolyID) %>%
+    dplyr::distinct()
+
+  return(list(LpiCov = LpiCov,
+              ObsData_plots = ObsData_plots,
+              ObsData_pts = ObsData_pts,
+              PLOTS = PLOTS,
+              PTS = PTS))
+
+}
