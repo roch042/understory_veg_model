@@ -1,0 +1,78 @@
+get_forage_models<-function(fielddata = fielddata,
+                            FieldDataPoints_QuadPolyID = FieldDataPoints_QuadPolyID,
+                            Covariates_QuadPolyID = Covariates_QuadPolyID,
+                            EcoCodes = NULL,
+                            scientific.name = "ModelCode",
+                            model = c("Genus","Species","SubSpecies"),
+                            type = c("presence","percent_cover")){
+
+  load(paste(system.file('forage',package = 'fsvm',mustWork = T)),"ForageModels.RData")
+  model <- match.arg(model,c("Genus","Species","SubSpecies"),several.ok = F)
+  type <- match.arg(type,c("presence","percent_cover"),several.ok = F)
+  Model <- ifelse(model=="Genus",Forage_Models_Genus, ifelse(model=="Species",Forage_Models_Species,Forage_Models_SubSpecies))
+  folder <- model
+
+  if(is.null(EcoCodes)){
+    print("EcoCodes missing: assigning eco-regions")
+    EcoCodes<-fsvm::assign_ecoregions(FieldDataPoints_QuadPolyID)
+  }else{
+    print("EcoCodes present")
+    EcoCodes<-EcoCodes
+  }
+
+  print("Prepping Field Data")
+  print("rectifying taxa")
+  fielddata <- fsvm::rectify_taxa(dat = fielddata, scientific.name = scientific.name)
+  print("adding ecocodes")
+  fielddata <- fielddata %>% dplyr::left_join(EcoCodes[,c("QuadPoly_ID","quad","PlotKey","TranKey","Shape_Length","Shape_Area","ECOCODE")])
+
+  print("Prepping Covariates")
+  Covariates_QuadPolyID<-fsvm::prep_mod_covs(covariates=Covariates_QuadPolyID, field.pts=FieldDataPoints_QuadPolyID)
+
+  for (i in 1:nrow(Model)){
+    file_title <- paste(Model$Genus[i],"_",Model$Species[i],"_",Model$SubSpecies[i],".RData",sep="")
+    tryCatch({
+      print(paste("iteration number ",i," of ",nrow(Model),":",sep=""))
+      print("formatting data")
+      fsvm.dat <- fsvm::as_fsvm(genus = Model$Genus[i],
+                                species = Model$Species[i],
+                                subspecies = Model$SubSpecies[i],
+                                fielddata = fielddata)
+      print("training models")
+      fsvm.res <- fsvm::fsvm_train(DAT = fsvm.dat, type = type)
+
+      print("exporting models")
+      if(is.na(Model$Species[i]) & is.na(Model$SubSpecies[i])){
+        if(file.exists(here::here(file.path("models","genus",type)))==TRUE){
+          save(list=c("fsvm.res","fsvm.dat"),file=here::here(file.path("models","genus",type,file_title)))
+        } else {
+          file.path(dir.create(paste0(here::here(),"/models/")),
+                    dir.create(paste0(here::here(),"/models/","genus")),
+                    dir.create(paste0(here::here(),"/models/","genus/",type)))
+          save(list=c("fsvm.res","fsvm.dat"),file=here::here(file.path("models","genus",type,file_title)))
+        }
+
+      } else {
+        if(!is.na(Model$Species[i]) & is.na(Model$SubSpecies[i])){
+          if(file.exists(here::here(file.path("models","species",type)))==TRUE){
+            save(list=c("fsvm.res","fsvm.dat"),file=here::here(file.path("models","species",type,file_title)))
+          } else {
+            file.path(dir.create(paste0(here::here(),"/models/")),
+                      dir.create(paste0(here::here(),"/models/","species")),
+                      dir.create(paste0(here::here(),"/models/","species/",type)))
+            save(list=c("fsvm.res","fsvm.dat"),file=here::here(file.path("models","species",type,file_title)))
+          }
+
+        } else {
+          if(file.exists(here::here(file.path("models","subspecies",type)))==TRUE){
+            save(list=c("fsvm.res","fsvm.dat"),file=here::here(file.path("models","subspecies",type,file_title)))
+          } else {
+            file.path(dir.create(paste0(here::here(),"/models/")),
+                      dir.create(paste0(here::here(),"/models/","subspecies")),
+                      dir.create(paste0(here::here(),"/models/","subspecies/",type)))
+            save(list=c("fsvm.res","fsvm.dat"),file=here::here(file.path("models","subspecies",type,file_title)))
+          }}
+      }
+    }, error=function(e){})
+  }}
+
