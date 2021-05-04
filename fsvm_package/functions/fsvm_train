@@ -1,0 +1,194 @@
+fsvm_train <- function(DAT=DAT, type=c("presence","percent_cover")){
+  type<-match.arg(type,c("presence","percent_cover"),several.ok = F)
+
+  # Create training and test data ####
+  Total <- dplyr::bind_rows(DAT$PTS,DAT$PLOTS) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-QuadPoly_ID,-ECOCODE) %>%
+    dplyr::select(-nass,-tpi,-dev,-tsf,-ff,-sc) # exclude categorical covariate
+
+  if(type=="percent_cover"){
+    Total<-Total %>% dplyr::mutate(Count = round(Prop*100, digits=0),
+                                   lCount = log(Count + 0.001))
+  }
+
+  if(length(unique(Total$Present))==1 | table(Total$Present)[2] < 3){
+    return("not enough data collected")
+  } else {
+    extraNames <- c("QuadPoly_ID","Total","Prop","OBJECTID","quad","Shape_Length","Shape_Area","mean_blue","mean_green","mean_red","mean_nir","sd_blue","sd_green","sd_red","sd_nir","Hit")
+    extraNames <-if(type=="presence") extraNames  else c(extraNames,"Present","lCount","Count")
+    outcomeName <- ifelse(type=="presence","Present","Prop") # response variable
+    predictorsNames <- names(Total)[which(!names(Total) %in% c(extraNames,outcomeName))] # covariates
+    if(type=="presence"){Total$Present2 <- as.factor(ifelse(Total$Present == "1","Yes","No"))}# non-factor response variable for GLMNET
+    n_obs <- nrow(Total) # Get the number of observations
+
+    repeat{
+      permuted_rows <- sample(n_obs)# Shuffle row indices: permuted_rows
+      Total <- Total[permuted_rows, ] # Randomly order data
+      split <- round(n_obs * 0.6) # Identify row to split on: split
+      train <- Total[1:split,] # Create train
+      test <- Total[(split+1):nrow(Total),] # Create test
+      if(length(unique(train$Present))==2 & length(unique(test$Present))==2) {
+        break
+      }
+    }
+
+    # Collect Training Data ####
+    DATA <- list(train = train, test = test, total = Total, predictorsNames = predictorsNames)
+    myFolds <- createFolds(1:nrow(train), k = 10)
+    myControl <- trainControl(
+      method = "cv",
+      summaryFunction = if(type=="presence") twoClassSummary else defaultSummary,
+      classProbs = if(type=="presence") TRUE else FALSE, # IMPORTANT!
+      verboseIter = TRUE,
+      savePredictions = TRUE,
+      index = myFolds)
+
+
+    if(outcomeName=="Prop"){
+      formula <- formula(paste(outcomeName," ~ .",sep=""))
+      CONTROL <- list(myFolds = myFolds, myControl = myControl, outcomeName = outcomeName, formula = formula)
+      mods<-data.frame("LM","GLM","GBM","GLMNET","RF","XGBOOST","RPART","RPART2","TREEBAG","BAGEARTH")
+      method.list<-list('lm','glm','gbm','glmnet','ranger','xgbTree','rpart','rpart2','treebag','bagEarth')
+      grid.gbm<- expand.grid(interaction.depth = c(1, 2, 3, floor(sqrt(NCOL(train)))),
+                             n.trees = c(0,10,50,100,500,1000,2000),
+                             shrinkage = c(.0005, .005, .05),
+                             n.minobsinnode = 10)
+    }else{
+      outcomeName<-"Present2"
+      formula <- formula(paste(outcomeName," ~ .",sep=""))
+      CONTROL <- list(myFolds = myFolds, myControl = myControl)
+      mods<-list("GLM","GBM","GLMNET","RF","GLMNET_class","XGBOOST")
+      method.list<-list('glm','gbm','glmnet','ranger','glmnet','xgbTree')
+      grid_glmnetclass<-expand.grid(
+        alpha = 0:1,
+        lambda = seq(0.0001, 1, length = 20))
+      grid_xgboost <- expand.grid(
+        nrounds = 100,
+        max_depth = 6,
+        eta = 0.3,
+        gamma = 0,
+        colsample_bytree = 1,
+        min_child_weight = 1,
+        subsample = 1)
+      myControlReg <- trainControl(
+        method = "cv",
+        verboseIter = TRUE,
+        savePredictions = TRUE,
+        index = myFolds)}
+
+    ##MACHINE LEARNING MODELS##
+    tryCatch({
+      for(i in 1:length(mods)){
+        #Fit model
+        model <- caret::train(formula,
+                              data = train[,c(outcomeName,predictorsNames)],
+                              tuneLength = ifelse(mods[[i]]=="RF" && type=="presence",3,NULL),
+                              method = method.list[[i]],
+                              family = if(mods[[i]]=="GLM" && outcomeName=="Prop") binomial(link = "logit") else NULL,
+                              trControl = ifelse(mods[[i]]=="GLMNET" && type=="presence",myControlReg, myControl),
+                              metric = ifelse(type=="presence",
+                                              ifelse(mods[[i]] %in% as.factor(c("GLM","GBM")),"ROC",
+                                                     ifelse(mods[[i]]=="GLMNET","RMSE",NULL)),
+                                              ifelse(mods[[i]] %in% as.factor(c("GLM","GBM","GLMNET","RF")),"RMSE",NULL)),
+                              tuneGrid = if(mods[[i]]=="GLMNET_class"){grid_glmnetclass
+                                         }else if(mods[[i]]=="XGBOOST" && type=="presence"){grid_xgboost
+                                         }else if(mods[[i]]=="GBM" && type=="percent_cover"){grid.gbm
+                                         }else{NULL},
+                              preProc = if(mods[[i]] %in% c("GLMNET_class","XGBOOST","RPART","RPAR2","TREEBAG","BAGEARTH"))  NULL else c("center","scale"),
+                              maximize= ifelse(type=="percent_cover",FALSE,ifelse(metric=="RMSE",F,T)),
+                              verbose= ifelse(mods[[i]]=="XGBOOST",TRUE,FALSE),
+                              na.action = na.pass)
+
+        if(type=="presence"){
+          if(mods[[1]] != "GLMNET"){
+            #Presence
+            pred_raw <- predict(object=model, test, type='raw')
+            accuracy <- postResample(pred=pred_raw, obs=as.factor(test$Present2))
+            confusion <- confusionMatrix(pred_raw, test[["Present2"]])
+            pred_prob <- predict(object=model, test, type='prob')
+            auc <- roc(ifelse(test$Present2=="Yes",1,0), pred_prob[[2]])
+            ROCplot <- plot(auc)
+            out<-c(outcomeName,model,pred_raw,accuracy,confusion,pred_prob,auc,ROCplot)}
+          else{
+            pred_raw<-NULL; accuracy<-NULL; confusion<-NULL
+            pred_prob <- predict(object=model, test)
+            auc <- roc(test$Present, pred_prob)
+            ROCplot <- plot(auc)
+            ROCplot <- plot(auc)
+            out<-c(outcomeName,model,pred_raw,accuracy,confusion,pred_prob,auc,ROCplot)
+          }
+
+        }else{
+          #Percent_Cover
+          pred_prob <- predict(object=model, test)
+          observations <- unlist(test[,outcomeName])
+          train_results_summary <- model$results
+          test_results_summary <- postResample(pred=pred_prob, obs=observations)
+          out<-c(outcomeName,model,pred_prob,train_results_summary,test_results_summary)
+        }
+        for(j in 2:length(out)){
+          mods[[i]][[j]]<-out[j]
+        }
+        print(paste("finished",model.list[[i]][[1]]))
+      }
+    }, error=function(e){})
+
+    MODELS<-mods
+    COMPARE<-NULL
+    if(type=="presence"){
+      model_list<-list(GBM = MODELS$GBM$model, GLM = MODELS$GLM$model, GLMNET_class = MODELS$GLMNET_class$model, RF = MODELS$RF$model, XGBOOST = MODELS$XGBOOST$model)
+    }else{
+      model_list <- list(LM = MODELS$LM$model, GBM = MODELS$GBM$model, GLM = MODELS$GLM$model, RF = MODELS$RF$model, XGBOOST = MODELS$XGBOOST$model, RPART = MODELS$RPART$model, RPART2 = MODELS$RPART2$model, TREEBAG = MODELS$TREEBAG$model, BAGEARTH = MODELS$BAGEARTH$model)
+    }
+    tryCatch({
+      COMPARE$resamples <- resamples(model_list) #Resample
+      COMPARE$resamples_summary <- summary(resamples)
+      COMPARE$bwplot <- bwplot(resamples, metric = ifelse(type=="presence","ROC","RMSE"))
+      COMPARE$bwplot <- xyplot(resamples, metric = ifelse(type=="presence","ROC","RMSE"))
+    }, error=function(e){})
+
+    # Identify BEST model ####
+    BEST <- NULL
+    if(type=="presence"){
+      tryCatch({
+        # maximum ROC
+        max <- COMPARE$resamples_summary$statistics$ROC[,"Max."]
+        max_ROC_caret <- names(which(max == max(max,na.rm=T)))
+        # minimum ROC spread
+        spread <- COMPARE$resamples_summary$statistics$ROC[,"3rd Qu."] - COMPARE$resamples_summary$statistics$ROC[,"1st Qu."]
+        min_ROCspread_caret <- names(which(spread == min(spread[spread != 0],na.rm=T)))
+        # max auc
+        auc_vector <- c("GLM"=MODELS$GLM$auc$auc,"GBM"=MODELS$GBM$auc$auc,"GLMNET"=MODELS$GLMNET$auc$auc,"RF"=MODELS$RF$auc$auc,"GLMNET_class"=MODELS$GLMNET_class$auc$auc,"XGBOOST"=MODELS$XGBOOST$auc$auc)
+        max_AUC_test <- names(which(auc_vector == max(auc_vector,na.rm=T)))
+        BEST <- list(max_ROC_caret = max_ROC_caret, min_ROCspread_caret = min_ROCspread_caret, max_AUC_test = max_AUC_test)
+      }, error=function(e){})
+
+    }else{
+      tryCatch({
+        # min mean train RMSE
+        value <- COMPARE$resamples_summary$statistics$RMSE[,"Mean"]
+        min_RMSE_train <- names(which(value == min(value,na.rm=T)))
+        # min RMSE spread
+        spread <- COMPARE$resamples_summary$statistics$RMSE[,"3rd Qu."] - COMPARE$resamples_summary$statistics$RMSE[,"1st Qu."]
+        min_RMSEspread_train <- names(which(spread == min(spread[spread != 0],na.rm=T)))
+        # max mean train Rsquared
+        value <- COMPARE$resamples_summary$statistics$Rsquared[,"Mean"]
+        max_Rsquared_train <- names(which(value == max(value,na.rm=T)))
+        # min Rsquared spread
+        spread <- COMPARE$resamples_summary$statistics$Rsquared[,"3rd Qu."] - COMPARE$resamples_summary$statistics$Rsquared[,"1st Qu."]
+        min_Rsquaredspread_train <- names(which(spread == min(spread[spread != 0],na.rm=T)))
+        # min test RMSE
+        value <- c("LM"=as.vector(MODELS$LM$test_results_summary["RMSE"]), "GLM"=as.vector(MODELS$GLM$test_results_summary["RMSE"]), "GBM"=as.vector(MODELS$GBM$test_results_summary["RMSE"]), "RF"=as.vector(MODELS$RF$test_results_summary["RMSE"]), "XGBOOST"=as.vector(MODELS$XGBOOST$test_results_summary["RMSE"]), "RPART"=as.vector(MODELS$RPART$test_results_summary["RMSE"]), "RPART2"=as.vector(MODELS$RPART2$test_results_summary["RMSE"]), "TREEBAG"=as.vector(MODELS$TREEBAG$test_results_summary["RMSE"]), "BAGEARTH"=as.vector(MODELS$BAGEARTH$test_results_summary["RMSE"]))
+        min_RMSE_test <- names(which(value == min(value,na.rm=T)))
+        # min test Rsquared
+        value <- c("LM"=as.vector(MODELS$LM$test_results_summary["Rsquared"]), "GLM"=as.vector(MODELS$GLM$test_results_summary["Rsquared"]), "GBM"=as.vector(MODELS$GBM$test_results_summary["Rsquared"]), "RF"=as.vector(MODELS$RF$test_results_summary["Rsquared"]), "XGBOOST"=as.vector(MODELS$XGBOOST$test_results_summary["Rsquared"]), "RPART"=as.vector(MODELS$RPART$test_results_summary["Rsquared"]), "RPART2"=as.vector(MODELS$RPART2$test_results_summary["Rsquared"]), "TREEBAG"=as.vector(MODELS$TREEBAG$test_results_summary["Rsquared"]), "BAGEARTH"=as.vector(MODELS$BAGEARTH$test_results_summary["Rsquared"]))
+        max_Rsquared_test <- names(which(value == max(value,na.rm=T)))
+        BEST <- list(min_RMSE_train = min_RMSE_train, min_RMSEspread_train = min_RMSEspread_train, max_Rsquared_train = max_Rsquared_train, min_Rsquaredspread_train = min_Rsquaredspread_train, min_RMSE_test = min_RMSE_test, max_Rsquared_test = max_Rsquared_test)
+      }, error=function(e){})
+    }
+
+    # Return Results ####
+    return(list(DATA = DATA, CONTROL = CONTROL, MODELS = MODELS, COMPARE = COMPARE, BEST = BEST))
+  }
+}
