@@ -1,0 +1,47 @@
+py_extract_quadpolyID <-function (py.path="C:/Python27/ArcGIS10.6/python.exe",
+                                  fielddata.path, quad.path="default", output.gdb.path,output.folder.path,output.dbf,
+                                  output.RData="None",intercept.feature = "None",newgdb.name = "None",quad.sel = "None"){
+  if (quad.path=="default"){
+    x<-list("ID Only"="A://Fine scale vegetation analysis/dbases_4modeling/blank_polys100k.gdb",
+            "Covariates"="A://Fine scale vegetation analysis/dbases_4modeling/poly_merges.gdb")
+    quad.path<-reshape2::melt(x[menu(c("ID Only","Covariates"),title="Select QuadPolygon Type:")])[[1]]}
+  output.RData<-ifelse(output.RData=="None",ifelse(str_detect(quad.path,"blank"),"FieldDataPoints_QuadPolyID.RData","Covariates_QuadPolyID.RData"),output.RData)
+  if (file.exists(output.folder.path) == FALSE){dir.create(output.folder.path)}
+
+  print(paste(output.RData,"will be stored in",output.folder.path))
+  print('Initializing Python and Loading Function')
+  reticulate::use_python(py.path, required = T) #Geoprocessing requires ArcGIS installed Python (MUST USE 32-bit v. of R!!!)
+  reticulate::py_available(initialize = T) #initialize python
+  reticulate::source_python(paste(system.file('python',package = 'fsvm',mustWork = T),'extract_quadpolyID.py',sep = '/'))
+  print('Reticulating QuadPolyID Extraction...')
+  extract_quadpolyID(path_to_pts=fielddata.path,
+                     path_to_quad_gdb= quad.path,
+                     path_to_output_gdb= output.gdb.path,
+                     path_to_output_folder= output.folder.path,
+                     mergeTable_dbf=output.dbf,
+                     intercept_feature=intercept.feature,
+                     gdb_name=newgdb.name,
+                     sel=quad.sel)
+
+  ##Combine and Export Output
+  print('Formatting and Exporting Output')
+  output<-foreign::read.dbf(paste0(output.folder.path,"/",output.dbf),as.is = F)
+  output <- output %>%
+    dplyr::mutate(output,TranKey=as.character(TranKey),PlotKey=as.character(PlotKey),QuadPoly_ID=as.character(QuadPoly_I))
+
+  if(stringr::str_detect(quad.path,"blank")==T){
+    output$quad<-purrr::transpose(lapply(output$QuadPoly_ID,FUN=stringr::str_split,pattern="_",n=2,simplify=T))[[1]]
+    FDP_QuadPolyID<- output %>%
+      dplyr::select(QuadPoly_ID,quad,PlotKey,TranKey,Easting,Northing,Shape_Leng,Shape_Area) %>%
+      dplyr::distinct()
+    save(FDP_QuadPolyID,file = paste0(output.folder.path, output.RData))
+    return(FDP_QuadPolyID)
+
+  }else{
+    Cov_QuadPolyID<- output %>%
+      dplyr::select(-OBJECTID,-Join_Count,-TARGET_FID,-JOIN_FID,-Code,-SpName,-Mdl_N_R,-Lif_Frm,-MuleDer,-SageGrs,-Elk,-Moose,-PlotKey,-TranKey,-id,-Source,-Smpl_Yr,-Shape_Length,-Shape_Area,-Easting,-Northng, -ScntfcN, -Species, -Prcnt_C, -Plot_Ar) %>%
+      dplyr::distinct()
+    save(Cov_QuadPolyID,file = paste0(output.folder.path, output.RData))
+    return(Cov_QuadPolyID)
+  }
+}

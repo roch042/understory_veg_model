@@ -1,0 +1,61 @@
+getSVS<-function(py.path ="C:/Python27/ArcGIS10.6/python.exe", featureService_ID, output_format = 'CSV',
+                 download_folder = 'C:/Temp/', agol.username, agol.password, download_url, filename, token, folder){
+
+  output_format<-match.arg(output_format, c('Shapefile','CSV','File Geodatabase'), several.ok = F)
+
+  print('Initializing Python and Loading Function..')
+  reticulate::use_python(py.path, required = T) #Geoprocessing requires ArcGIS installed Python (MUST USE 32-bit v. of R!!!)
+  reticulate::py_available(initialize = T) #initialize python
+  reticulate::source_python(paste(system.file('python',package = 'fsvm',mustWork = T),'downloadSVS.py',sep = '/'))
+  print('Reticulating Survey 123 Download...')
+  downloadSVS(featureService_ID = featureService_ID,
+              output_format = output_format,
+              download_folder = download_folder,
+              cred.user = agol.username,
+              cred.passwrd = agol.password,
+              download_url = download_url,
+              filename = filename,
+              token = token,
+              folder = folder)
+  print("Download Complete")
+  if(output_format!="CSV"){
+    print("Returning Download:",output_format)
+    SEL<-sf::st_read(dsn=filepath(download_folder),layer = filename,driver=ifelse(output_format=="Shapefile","ESRI Shapefile","OpenFileGDB"))
+  }else{
+    print("Formatting Output...")
+    DAT<-readr::read_csv(file.path(download_folder,filename))
+    #Select Data
+    SEL <- DAT %>%
+      dplyr::select(ObjectID, GlobalID, Observer, Date, lat_auto, lon_auto, Latitude, Longitude, `Primary TREE Species`, `Primary SHRUB Species`, `Most abundant GRASS`, `Second most abundant GRASS`,`Most abundant FORB`, `Second most abundant FORB`) %>%
+      tidyr::pivot_longer(cols = c(`Primary TREE Species`, `Primary SHRUB Species`, `Most abundant GRASS`, `Second most abundant GRASS`,`Most abundant FORB`, `Second most abundant FORB`)) %>%
+      tidyr::unite(col = TranKey,
+                   Observer, Date, ObjectID,
+                   sep = "_",
+                   remove = FALSE) %>%
+      dplyr::mutate(PlotKey = TranKey) %>%
+      dplyr::rename(Level = name,
+                    Code = value) %>%
+      dplyr::filter(!is.na(Code)) %>%
+      dplyr::filter(!is.na(Longitude) & !is.na(Latitude)) %>%
+      dplyr::mutate(Date = lubridate::mdy_hms(Date))
+
+    #Rectify taxa
+    print("Rectifying Taxa (ITIS Taxonomic Serial Number)...")
+    SEL<-fsvm::rectify_taxa(dat = SEL, scientific.name = SEL$Code)
+
+    #Reproject coordinates
+    print("Reprojecting coordinates...")
+    SEL_sf <- sf::st_as_sf(SEL, coords = c("Longitude","Latitude"))
+    sf::st_crs(SEL_sf) <- 4326
+    SEL_sf_transform <- sf::st_transform(SEL_sf, "+proj=tmerc +lat_0=42 +lon_0=-114 +k=0.9996 +x_0=2500000 +y_0=1200000 +datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0") # convert to NAD 1983 Idaho RM
+    coords <- as.data.frame(sf::st_coordinates(SEL_sf_transform))
+    names(coords) <- c("Easting","Northing")
+    SEL <- dplyr::bind_cols(SEL,coords) %>%
+      dplyr::select(-lat_auto,-lon_auto,-Latitude,-Longitude) %>%
+      dplyr::mutate(Source = "IDFG_Simple_Veg_Survey",
+                    DataType = "Other",
+                    Smpl_Yr = lubridate::year(Date)) %>%
+      dplyr::select(TranKey, PlotKey, Source, DataType, Smpl_Yr, Easting, Northing, Level, Code, G1.TSN, G2.TSN, G3.TSN, G4.TSN)
+  }
+  return(SEL)
+}

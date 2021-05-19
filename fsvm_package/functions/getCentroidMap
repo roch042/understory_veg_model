@@ -1,0 +1,36 @@
+getCentroidMap<-function(pred_covs,
+                         folder = c("genus","species","subspecies"),
+                         type = c("presence","percent_cover"),
+                         title = "Name of Spatial Extent",
+                         files = NULL){
+  load(pred_covs)
+  type<-match.arg(type,c("presence","percent_cover"),serveral.ok =T)
+  folder<-match.arg(folder,c("genus","species","subspecies"),serveral.ok =T)
+
+  for(f in 1:length(folder)){
+    for(t in 1:length(type)){
+      mod_files<-ifelse(is.null(files),list.files(here(file.path("results",folder[f],type[t],"text"))),mod_files)
+      mod_files<-mod_files[which(grepl(title,mod_files))]
+
+      for (i in 1:length(mod_files)) {
+        title <- gsbu(".csv","",mod_files[i])
+        if(title %in% gsub(".tif","",list.files(here(file.path("results",folder[f],type[t],"maps"))))){
+          next
+        }else{
+          tiff(filename = here(file.path("results",folder[f],type[t],"maps",paste(title,".tif",sep=""))),
+               width = 14, height = 8.5, unit = "in", res = 200)
+          makecentroid()
+          temp<-readr::read_csv(here(file.path("results",folder[f],type[t],"text",mod_files[i])))
+          unit <- pred_covs %>% dplyr::select(QuadPoly_ID,Centroid_X,Centroid_Y)%>%dplyr::left_join(temp)
+          if(type=="present"){unit<-unit%>%dplyr::mutate(Present=dplyr::recode(Present,"1"="Yes","0"="No"))
+          }else{next}
+          p1<-ggplot2::ggplot(unit,aes(x=Centroid_X,y=Centoid_Y,color=Prob))+geom_point(size=2,alpha=0.8)+scale_color_viridis(limits = c(0,1),discrete=F,option="D")
+          p2<-ggplot2::ggplot(unit,aes(x=Centroid_X,y=Centoid_Y,color=ifelse(type=="present",Present,Prob)))+geom_point(size=2,alpha=0.8)+scale_color_viridis(discrete = ifelse(type=="present",T,F),option="D")
+          pfinal<-grid.arrange(p1,p2,ncol=2,top=textGrob(title,gp=gpar(fontsize=20,font=3)))
+          dev.off()
+        }
+        gc()
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+rectify_taxa<-function(dat,scientific.name="ModelCode"){
+  print("Rectifying Taxonomic Names...")
+  temp<-taxize::gnr_resolve(sci = unique(dat[,scientific.name]),data_source_ids = 3, http = "post", canonical=T, fields = "all")
+  temp<-temp[grepl("Plantae",temp$classification_path),]
+  temp<-temp[!duplicated(temp$user_supplied_name),]
+  temp$TSN<-ifelse(is.na(temp$current_taxon_id),temp$taxon_id,temp$current_taxon_id)
+  temp$Accepted.Name<-NA
+  for(i in 1:nrow(temp)){
+    temp$Accepted.Name[i]<-taxize::id2name(temp$TSN[i],db="itis")[[1]][[2]]
+  }
+
+  print("Assigning Model Groups by Accepted Name...")
+  temp<-temp[,c("user_supplied_name","Accepted.Name")]
+  x<-as.data.frame(stringr::str_split_fixed(temp$Accepted.Name," ",4))
+  colnames(x)<-c("Genus","Specific.Epithet","Infra.Rank","Infraspecific.Epithet")
+  temp$Infra.Rank<-x$Infra.Rank
+  temp$G1<-x$Genus
+  temp$G2<-paste(x$Genus,x$Specific.Epithet)
+  temp$G3<-ifelse(temp$Infra.Rank=="ssp.",
+                  paste(x$Genus,x$Specific.Epithet,x$Infra.Rank,x$Infraspecific.Epithet),
+                  "NA")
+  temp$G4<-ifelse(temp$Infra.Rank=="var.",
+                  paste(x$Genus,x$Specific.Epithet,x$Infra.Rank,x$Infraspecific.Epithet),
+                  "NA")
+  temp$Infra.Rank<-NULL
+
+  grps<-c("G1","G2","G3","G4")
+  for(i in 1:4){
+    x<-grps[i]
+    print(paste("Getting",x,"Taxonomic Serial Number..."))
+    g<-taxize::gnr_resolve(sci = temp[[x]],data_source_ids = 3, http = "post", canonical=T, fields = "all")
+    g<-g[grepl("Plantae",g$classification_path),]
+    g<-g[!duplicated(g$user_supplied_name),]
+    g[[paste0(x,".TSN")]]<-ifelse(is.na(g$current_taxon_id),g$taxon_id,g$current_taxon_id)
+    g<-as.data.frame(g[,c("user_supplied_name",paste0(x,".TSN"))])
+    y<-colnames(g)[1]
+    by<-rlang::set_names(rlang::quo_name(dplyr::enquo(y)),rlang::quo_name(dplyr::enquo(x)))
+    temp<- temp %>% dplyr::left_join(g,by=by)
+  }
+
+  print("Joining Taxonomic Serial Numbers and Accepted Names to Data...")
+  by <-rlang::set_names(rlang::quo_name(dplyr::enquo(y)),rlang::quo_name(dplyr::enquo(scientific.name)))
+  rec.tax<- dat %>% dplyr::left_join(temp,by=by)
+
+  return(rec.tax)
+}
